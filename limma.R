@@ -47,12 +47,40 @@ cm <- makeContrasts(
   levels = design
 )
 
+comparison_names <- c(
+  "AA_vs_CKD",
+  "AA_vs_nt",
+  "CKD_vs_nt",
+  "AA_CKD_vs_AA",
+  "AA_CKD_vs_CKD",
+  "AA_CKD_vs_nt"
+)
 
+cm
 fit2 <- contrasts.fit(fit, cm)
 fit2 <- eBayes(fit2)
 
 topTable(fit2,
          coef = 1,#o primeiro contraste avaliado
          adjust.method = "BH",#Benjamin hocheback - Falsos positivos corrigidos
-         number = 10 #numero de linhas para serem exibidas
+         number = Inf #numero de linhas para serem exibidas
 )
+
+
+
+for(i in 1:6){
+  tmp_tab <- NULL
+  tmp_tab <- topTable(fit2,
+           coef = 1,#o primeiro contraste avaliado
+           adjust.method = "BH",#Benjamin hocheback - Falsos positivos corrigidos
+           number = Inf #numero de linhas para serem exibidas
+  )
+  
+  tmp_tab %>% 
+    rownames_to_column("PG.ProteinAccessions") %>% 
+    left_join(feature_data) %>% 
+    writexl::write_xlsx(
+      path = paste0("Output/",
+                    comparison_names[i],".xlsx"))
+  
+}
