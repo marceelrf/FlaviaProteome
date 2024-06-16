@@ -78,6 +78,11 @@ for(i in 1:6){
   
   tmp_tab %>% 
     rownames_to_column("PG.ProteinAccessions") %>% 
+    mutate(Sig = case_when(
+      logFC > 1 & P.Value < 0.05 ~ "Up",
+      logFC < -1 & P.Value < 0.05 ~ "Down",
+      TRUE ~ "NotSig"
+    )) %>% 
     left_join(feature_data) %>% 
     writexl::write_xlsx(
       path = paste0("Output/",
