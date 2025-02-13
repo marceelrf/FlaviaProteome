@@ -1,0 +1,22 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+# FlaviaProteome
+
+<!-- badges: start -->
+<!-- badges: end -->
+
+1. função renal e doença crônica renal
+2. Inflamassoma
+3. Metabolismo do fosfato/fósforus
+4. Calcificação ectópica em rins = Nefrocalcinos

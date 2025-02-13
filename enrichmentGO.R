@@ -37,10 +37,13 @@ annot_gene <- AnnotationDbi::select(x = org.Mm.eg.db,
                                     columns = c("SYMBOL","ENTREZID","UNIPROT"),
                                     keytype = "UNIPROT")
 
-tmp_go <- enrichGO(gene = AAxNT_diff,
+AAxNT_diff_go <- enrichGO(gene = AAxNT_diff,
          OrgDb = org.Mm.eg.db,
          keyType = "UNIPROT",
-         ont = "ALL")
+         ont = "ALL",
+         pvalueCutoff = 1,
+         qvalueCutoff = 1,
+         minGSSize = 1)
 
 # AA+CKD x AA -------------------------------------------------------------
 # coef = 4
@@ -54,13 +57,28 @@ AA_CKDxAA <- topTable(fit2,
 
 AA_CKDxAA$UNIPROT <- rownames(AA_CKDxAA)
 
-AA_CKDxAA %>% 
+AA_CKDxAA_diff <-
+  AA_CKDxAA %>% 
   mutate(Diff = case_when(
     logFC < -1 & P.Value < 0.05 ~ "Down",
     logFC > 1 & P.Value < 0.05 ~ "Up",
     TRUE ~ "Ns"
-  )) %>% 
-  count(Diff)
+  ))  %>%
+  filter(Diff != "Ns") %>% 
+  pull(UNIPROT)
+
+annot_gene <- AnnotationDbi::select(x = org.Mm.eg.db,
+                                    keys = AA_CKDxAA_diff,
+                                    columns = c("SYMBOL","ENTREZID","UNIPROT"),
+                                    keytype = "UNIPROT")
+
+AA_CKDxAA_diff_go <- enrichGO(gene = AA_CKDxAA_diff,
+                          OrgDb = org.Mm.eg.db,
+                          keyType = "UNIPROT",
+                          ont = "ALL",
+                          pvalueCutoff = 1,
+                          qvalueCutoff = 1,
+                          minGSSize = 1)
 
 # AA+CKD x CKD ------------------------------------------------------------
 # coef = 5
@@ -73,10 +91,24 @@ AA_CKD_vs_CKD <- topTable(fit2,
 
 AA_CKD_vs_CKD$UNIPROT <- rownames(AA_CKD_vs_CKD)
 
-AA_CKD_vs_CKD %>% 
+AA_CKD_vs_CKD_diff <- AA_CKD_vs_CKD %>% 
   mutate(Diff = case_when(
     logFC < -1 & P.Value < 0.05 ~ "Down",
     logFC > 1 & P.Value < 0.05 ~ "Up",
     TRUE ~ "Ns"
-  )) %>% 
-  count(Diff)
+  )) %>%
+  filter(Diff != "Ns") %>% 
+  pull(UNIPROT)
+
+annot_gene <- AnnotationDbi::select(x = org.Mm.eg.db,
+                                    keys = AA_CKD_vs_CKD_diff,
+                                    columns = c("SYMBOL","ENTREZID","UNIPROT"),
+                                    keytype = "UNIPROT")
+
+AA_CKD_vs_CKD_diff_go <- enrichGO(gene = AA_CKD_vs_CKD_diff,
+                              OrgDb = org.Mm.eg.db,
+                              keyType = "UNIPROT",
+                              ont = "ALL",
+                              pvalueCutoff = 1,
+                              qvalueCutoff = 1,
+                              minGSSize = 1)
