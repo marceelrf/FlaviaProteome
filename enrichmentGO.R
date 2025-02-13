@@ -112,3 +112,6 @@ AA_CKD_vs_CKD_diff_go <- enrichGO(gene = AA_CKD_vs_CKD_diff,
                               pvalueCutoff = 1,
                               qvalueCutoff = 1,
                               minGSSize = 1)
+
+
+dotplot(AA_CKD_vs_CKD_diff_go)
