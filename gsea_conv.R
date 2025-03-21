@@ -8,11 +8,13 @@ AAxNT_tibble <- AAxNT %>%
   rename(Symbol = To)
 
 AA_CKD_vs_CKD_tibble <- AA_CKD_vs_CKD %>% 
+  separate_rows(UNIPROT,sep = ";") %>%
   left_join(mapping, by = join_by(UNIPROT == From)) %>% 
   select(-SYMBOL,-ENTREZID) %>% 
   rename(Symbol = To)
 
 AA_CKDxAA_tibble <- AA_CKDxAA %>% 
+  separate_rows(UNIPROT,sep = ";") %>%
   left_join(mapping, by = join_by(UNIPROT == From)) %>% 
   select(-SYMBOL,-ENTREZID) %>% 
   rename(Symbol = To)
@@ -37,13 +39,29 @@ fn_ORA_gene_diff <- function(x, lfc = 1, p_valor = 0.05) {
 # fn_ORA_gene_diff(AA_CKDxAA_tibble)
 
 ora_result_AAxNT <- enricher(fn_ORA_gene_diff(AAxNT_tibble),
-                             TERM2GENE = msig_data)
+                             TERM2GENE = msig_data,
+                             minGSSize = 1,
+                             maxGSSize = 500,
+                             pvalueCutoff = 1,
+                             qvalueCutoff = 1,
+                             pAdjustMethod = "BH")
+
 ora_result_AA_CKDxAA <- enricher(fn_ORA_gene_diff(AA_CKDxAA_tibble),
-                                 TERM2GENE = msig_data)
+                                 TERM2GENE = msig_data,
+                                 minGSSize = 1,
+                                 maxGSSize = 500,
+                                 pvalueCutoff = 1,
+                                 qvalueCutoff = 1,
+                                 pAdjustMethod = "BH")
 ora_result_AA_CKD_vs_CKD <- enricher(fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble),
-                                     TERM2GENE = msig_data)
+                                     TERM2GENE = msig_data,
+                                     minGSSize = 1,
+                                     maxGSSize = 500,
+                                     pvalueCutoff = 1,
+                                     qvalueCutoff = 1,
+                                     pAdjustMethod = "BH")
 
-
-ora_result_AA_CKDxAA@result %>% 
-  mutate(qscore = -log(p.adjust, base=10)) %>% 
-  barplot(x="qscore")
+# 
+# ora_result_AA_CKDxAA@result %>% 
+#   mutate(qscore = -log(p.adjust, base=10)) %>% 
+#   barplot(x="qscore")

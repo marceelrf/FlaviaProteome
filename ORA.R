@@ -8,11 +8,16 @@ mmu_c5 <- msigdbr::msigdbr(species = "Mus musculus", category = c("C5"))
 sigs <-
   mmu_c2 %>% 
   bind_rows(mmu_c5) %>% 
-  filter(str_detect(gs_description,"renal|Inflamassome|phosphate|phosphorus"))
+  filter(str_detect(gs_description,"renal|Inflamassome|phosphate|phosphorus|calcif"))
+
 
 sigs %>% 
   group_by(gs_description) %>% 
   count()
+
+sigs %>% 
+  filter(str_detect(gs_description,"calcif")) %>% 
+  View()
 
 msig_data <- sigs %>% select(gs_name, gene_symbol)
 
