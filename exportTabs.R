@@ -1,10 +1,19 @@
 library(tidyverse)
 
-writexl::write_xlsx(x = ora_result_AA_CKD_vs_CKD@result,
+writexl::write_xlsx(x = left_join(trans_tab,
+                                  ora_result_AA_CKD_vs_CKD@result,
+                                  join_by(gs_name == ID)) %>% 
+                      drop_na,
                     path = "Output/ora/ora_result_AA_CKD_vs_CKD.xlsx")
-writexl::write_xlsx(x = ora_result_AA_CKDxAA@result,
+writexl::write_xlsx(x = left_join(trans_tab,
+                                  ora_result_AA_CKDxAA@result,
+                                  join_by(gs_name == ID)) %>% 
+                      drop_na,
                     path = "Output/ora/ora_result_AA_CKDxAA.xlsx")
-writexl::write_xlsx(x = ora_result_AAxNT@result,
+writexl::write_xlsx(x = left_join(trans_tab,
+                                  ora_result_AAxNT@result,
+                                  join_by(gs_name == ID)) %>% 
+                      drop_na,
                     path = "Output/ora/ora_result_AAxNT.xlsx")
 
 #create networks

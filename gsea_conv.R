@@ -1,3 +1,4 @@
+library(clusterProfiler)
 mapping <- read_tsv(file = "Data/idmapping_AA_CKD_vs_CKD.tsv")
 
 
@@ -61,7 +62,3 @@ ora_result_AA_CKD_vs_CKD <- enricher(fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble),
                                      qvalueCutoff = 1,
                                      pAdjustMethod = "BH")
 
-# 
-# ora_result_AA_CKDxAA@result %>% 
-#   mutate(qscore = -log(p.adjust, base=10)) %>% 
-#   barplot(x="qscore")

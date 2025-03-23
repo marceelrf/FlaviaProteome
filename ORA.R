@@ -4,11 +4,33 @@ library(enrichplot)
 msigdbr::msigdbr_collections()
 mmu_c2 <- msigdbr::msigdbr(species = "Mus musculus", category = c("C2"))
 mmu_c5 <- msigdbr::msigdbr(species = "Mus musculus", category = c("C5"))
+mmu_h <- msigdbr::msigdbr(species = "Mus musculus", category = c("H"))
+
+
+termos_interesse <- c("renal",
+                      "Inflammassome",
+                      "Inflamma",
+                      "phosphate",
+                      "phosphorus",
+                      "calcif",
+                      "nefro")
+
+#"renal|Inflamassome|phosphate|phosphorus|calcif|nefro"
+
 
 sigs <-
   mmu_c2 %>% 
-  bind_rows(mmu_c5) %>% 
-  filter(str_detect(gs_description,"renal|Inflamassome|phosphate|phosphorus|calcif"))
+  bind_rows(mmu_c5,mmu_h) %>% 
+  filter(
+    str_detect(tolower(gs_name),
+               regex(str_c(termos_interesse, collapse = "|"),
+                     ignore_case = T)
+               ) |
+      str_detect(tolower(gs_description),
+                 regex(str_c(termos_interesse, collapse = "|"),
+                       ignore_case = T)
+                 )
+  )
 
 
 sigs %>% 
@@ -19,7 +41,16 @@ sigs %>%
   filter(str_detect(gs_description,"calcif")) %>% 
   View()
 
+sigs %>% 
+  group_by(gs_cat,gs_name) %>% 
+  count()
+
 msig_data <- sigs %>% select(gs_name, gene_symbol)
+
+trans_tab <-
+  sigs %>% 
+  select(gs_cat,gs_name) %>% 
+  distinct()
 
 genes_interesse_AAxNT <- AnnotationDbi::select(x = org.Mm.eg.db,
                                          keys = AAxNT_diff,
