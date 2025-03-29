@@ -1,5 +1,7 @@
+library(tidyverse)
 library(ggrepel)
 library(viridis)
+library(ComplexHeatmap)
 # Up e Downs
 
 
@@ -75,8 +77,105 @@ walk2(volcano_list, nms_comps,
 
 # Heatmap
 
-fn_get_diff_mat
+total_diff
 
+hm_data_total <-
+  raw_data %>% 
+  dplyr::select(Symbol = PG.Genes,
+                ends_with(c("_R1","_R2","_R3","_R4"))) %>% 
+  dplyr::filter(Symbol %in% total_diff)
+
+#hm1
+
+hm1_mat <-
+  hm_data_total %>% 
+  select(Symbol, starts_with(c("AA_R","non"))) %>% 
+  dplyr::filter(Symbol %in% fn_ORA_gene_diff(AAxNT_tibble)) %>% 
+  mutate(across(where(is.numeric),
+                \(x) log10(x+1))) %>% 
+  mutate(across(where(is.numeric),
+                \(x) (x-mean(x))/sd(x)
+                )
+         ) %>%
+  # pivot_longer(-Symbol,
+  #              names_to = "Groups",
+  #              values_to = "z_score") %>% 
+  column_to_rownames("Symbol") %>% 
+  as.matrix()
+
+tiff(filename = "Output/pub_plots/AAxNT_hm.tif",
+     bg = "white",
+     compression = "lzw",
+     width = 3000,
+     height = 3000,
+     res = 600)
+Heatmap(hm1_mat,
+        name = "Z-score",
+        border_gp = gpar(lwd = 2),
+        cluster_columns = F,
+        rect_gp = gpar(lwd = 1))
+dev.off()
+# hm2
+
+hm2_mat <-
+  hm_data_total %>% 
+  select(Symbol, starts_with(c("AA_R","AA_CKD"))) %>% 
+  dplyr::filter(Symbol %in% fn_ORA_gene_diff(AA_CKDxAA_tibble)) %>% 
+  mutate(across(where(is.numeric),
+                \(x) log10(x+1))) %>% 
+  mutate(across(where(is.numeric),
+                \(x) (x-mean(x))/sd(x)
+                )
+  ) %>% 
+  # pivot_longer(-Symbol,
+  #              names_to = "Groups",
+  #              values_to = "z_score") %>% 
+  column_to_rownames("Symbol") %>% 
+  as.matrix()
+
+tiff(filename = "Output/pub_plots/AA_CKDxAA_hm.tif",
+     bg = "white",
+     compression = "lzw",
+     width = 4000,
+     height = 12000,
+     res = 600)
+Heatmap(hm2_mat,
+        name = "Z-score",
+        border_gp = gpar(lwd = 2),
+        cluster_columns = F,
+        rect_gp = gpar(lwd = 1))
+dev.off()
+
+# hm 3
+
+hm3_mat <-
+  hm_data_total %>% 
+  select(Symbol, starts_with(c("CKD_R","AA_CKD"))) %>% 
+  dplyr::filter(Symbol %in% fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble)) %>% 
+  mutate(across(where(is.numeric),
+                \(x) log10(x+1))) %>% 
+  mutate(across(where(is.numeric),
+                \(x) (x-mean(x))/sd(x)
+  )
+  ) %>% 
+  # pivot_longer(-Symbol,
+  #              names_to = "Groups",
+  #              values_to = "z_score") %>% 
+  column_to_rownames("Symbol") %>% 
+  as.matrix()
+
+tiff(filename = "Output/pub_plots/AA_CKD_vs_CKD_hm.tif",
+     bg = "white",
+     compression = "lzw",
+     width = 4000,
+     height = 4000,
+     res = 600)
+Heatmap(hm3_mat,
+        name = "Z-score",
+        border_gp = gpar(lwd = 2),
+        cluster_columns = F,
+        rect_gp = gpar(lwd = 1))
+dev.off()
 
 # Barplot vias
 
