@@ -44,7 +44,7 @@ volcanoplot <- function(x,plot_title ="", lfc = 1, p_valor = 0.05){
       "Down" = "dodgerblue")) +
     labs(x = "log2FC",
          y = "-log10(p-value)",
-         col = "Significance",
+         col = "",
          title = plot_title) +
     theme_bw() +
     theme(text = element_text(family = "serif"),
@@ -103,6 +103,24 @@ hm1_mat <-
   column_to_rownames("Symbol") %>% 
   as.matrix()
 
+# Calculando a média por linha
+row_means <- hm_data_total %>% 
+  select(Symbol, starts_with(c("AA_R","non"))) %>% 
+  dplyr::filter(Symbol %in% fn_ORA_gene_diff(AAxNT_tibble)) %>% 
+  mutate(across(where(is.numeric),
+                \(x) log10(x+1))) %>% 
+  rowwise() %>% 
+  mutate(mean_value = mean(c_across(where(is.numeric)), na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  pull(mean_value)
+
+# Criando a anotação lateral direita com um ponto por linha
+right_annotation <- rowAnnotation(
+  Média = anno_points(row_means,
+                      size = unit(2, "mm"),
+                      gp = gpar(col = "black"))
+)
+
 tiff(filename = "Output/pub_plots/AAxNT_hm.tif",
      bg = "white",
      compression = "lzw",
@@ -113,7 +131,8 @@ Heatmap(hm1_mat,
         name = "Z-score",
         border_gp = gpar(lwd = 2),
         cluster_columns = F,
-        rect_gp = gpar(lwd = 1))
+        rect_gp = gpar(lwd = 1),
+        right_annotation = right_annotation)
 dev.off()
 # hm2
 
@@ -133,6 +152,23 @@ hm2_mat <-
   column_to_rownames("Symbol") %>% 
   as.matrix()
 
+# Calculando a média por linha
+row_means <- hm_data_total %>% 
+  select(Symbol, starts_with(c("AA_R","AA_CKD"))) %>% 
+  dplyr::filter(Symbol %in% fn_ORA_gene_diff(AA_CKDxAA_tibble)) %>% 
+  mutate(across(where(is.numeric), \(x) log10(x + 1))) %>% 
+  rowwise() %>% 
+  mutate(mean_value = mean(c_across(where(is.numeric)), na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  pull(mean_value)
+
+# Criando a anotação lateral direita com um ponto por linha
+right_annotation <- rowAnnotation(
+  Média = anno_points(row_means,
+                      size = unit(2, "mm"),
+                      gp = gpar(col = "black"))
+)
+
 tiff(filename = "Output/pub_plots/AA_CKDxAA_hm.tif",
      bg = "white",
      compression = "lzw",
@@ -143,7 +179,8 @@ Heatmap(hm2_mat,
         name = "Z-score",
         border_gp = gpar(lwd = 2),
         cluster_columns = F,
-        rect_gp = gpar(lwd = 1))
+        rect_gp = gpar(lwd = 1),
+        right_annotation = right_annotation)
 dev.off()
 
 # hm 3
@@ -164,6 +201,24 @@ hm3_mat <-
   column_to_rownames("Symbol") %>% 
   as.matrix()
 
+# Calculando a média por linha
+row_means <- hm_data_total %>% 
+  select(Symbol, starts_with(c("CKD_R","AA_CKD"))) %>% 
+  dplyr::filter(Symbol %in% fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble)) %>% 
+  mutate(across(where(is.numeric),
+                \(x) log10(x+1))) %>% 
+  rowwise() %>% 
+  mutate(mean_value = mean(c_across(where(is.numeric)), na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  pull(mean_value)
+
+# Criando a anotação lateral direita com um ponto por linha
+right_annotation <- rowAnnotation(
+  Média = anno_points(row_means,
+                      size = unit(2, "mm"),
+                      gp = gpar(col = "black"))
+)
+
 tiff(filename = "Output/pub_plots/AA_CKD_vs_CKD_hm.tif",
      bg = "white",
      compression = "lzw",
@@ -174,7 +229,8 @@ Heatmap(hm3_mat,
         name = "Z-score",
         border_gp = gpar(lwd = 2),
         cluster_columns = F,
-        rect_gp = gpar(lwd = 1))
+        rect_gp = gpar(lwd = 1),
+        right_annotation = right_annotation)
 dev.off()
 
 # Barplot vias
@@ -186,8 +242,10 @@ ora_list <- list("AAxNT" = ora_result_AAxNT,
 fn_barplot <- function(x, plot_title = "") {
   x@result %>%
     filter(pvalue < 0.05) %>%
-    arrange((Count), pvalue) %>%  # Ordena primeiro por Count (descendente) e depois por pvalue (ascendente)
-    mutate(ID = factor(ID, levels = unique(ID))) %>%  # Garante a ordenação
+    mutate(ID = str_split_fixed(ID, "_", 2)[,2]) %>% 
+    mutate(ID = str_replace_all(ID,"_"," ")) %>% 
+    arrange(pvalue) %>%  # Ordena primeiro por Count (descendente) e depois por pvalue (ascendente)
+    mutate(ID = factor(ID, levels = rev(unique(ID)))) %>%  # Garante a ordenação
     ggplot(aes(x = Count, y = ID, fill = -log10(pvalue))) +
     geom_col(color = "grey50") +
     scale_fill_viridis(option = "F") +
@@ -197,16 +255,22 @@ fn_barplot <- function(x, plot_title = "") {
 }
 
 
-ORA_plot_list <- map2(ora_list,nms_comps,
+ORA_plot_list <- map2(ora_list, nms_comps,
                       ~fn_barplot(.x,plot_title = .y))
-
+ORA_plot_list$AA_CKDxAA
 # fn_barplot(ora_list$AAxNT)
 # fn_barplot(ora_list$AA_CKDxAA)
 # fn_barplot(ora_list$AA_CKD_vs_CKD)
+paste0("Output/pub_plots/barplot_",
+       nms_comps,
+       ".png")
 
 walk2(ORA_plot_list, nms_comps,
       .f = \(x,y) ggsave(paste0("Output/pub_plots/barplot_", y,".png"),
                          plot = x,
-                         scale = 3,
+                         width = 12,
+                         height = 8,
                          bg = "white",
-                         dpi = 600))
+                         dpi = 600),
+      .progress = T)
+
