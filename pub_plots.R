@@ -2,9 +2,27 @@ library(tidyverse)
 library(ggrepel)
 library(viridis)
 library(ComplexHeatmap)
+library(VennDiagram)
+
 # Up e Downs
 
-
+fn_ORA_gene_diff_topN <- function(x, lfc = 1, p_valor = 0.05, N = 30) {
+  
+  x %>%
+    drop_na() %>%
+    dplyr::mutate(
+      abs_logFC = abs(logFC) # Calcula o valor absoluto do logFC
+    ) %>%
+    dplyr::mutate(Diff = case_when(
+      logFC < -lfc & P.Value < p_valor ~ "Down",
+      logFC > lfc & P.Value < p_valor ~ "Up",
+      TRUE ~ "Ns"
+    )) %>%
+    dplyr::filter(Diff != "Ns") %>% 
+    dplyr::arrange(desc(abs_logFC)) %>% # Ordena em ordem decrescente pelo valor absoluto do logFC
+    head(N) %>% # Seleciona os 30 primeiros genes
+    pull(Symbol)
+}
 
 # Volcano plot
 
@@ -116,7 +134,7 @@ row_means <- hm_data_total %>%
 
 # Criando a anotação lateral direita com um ponto por linha
 right_annotation <- rowAnnotation(
-  Média = anno_points(row_means,
+  Average = anno_points(row_means,
                       size = unit(2, "mm"),
                       gp = gpar(col = "black"))
 )
@@ -136,10 +154,16 @@ Heatmap(hm1_mat,
 dev.off()
 # hm2
 
+paper_proteins <- c("Chil3","Lcn2","Spp1","Mmp8",
+                    "Orm1","Orm2","Ltf","Apcs",
+                    "Ambp","Atf6","Pon3","Ces2a",
+                    "Ces2e","Ces3a")
+
 hm2_mat <-
   hm_data_total %>% 
   select(Symbol, starts_with(c("AA_R","AA_CKD"))) %>% 
-  dplyr::filter(Symbol %in% fn_ORA_gene_diff(AA_CKDxAA_tibble)) %>% 
+  #dplyr::filter(Symbol %in% fn_ORA_gene_diff_topN(AA_CKDxAA_tibble,N = 20)) %>% 
+  dplyr::filter(Symbol %in% paper_proteins) %>% 
   mutate(across(where(is.numeric),
                 \(x) log10(x+1))) %>% 
   mutate(across(where(is.numeric),
@@ -152,10 +176,13 @@ hm2_mat <-
   column_to_rownames("Symbol") %>% 
   as.matrix()
 
+
+
 # Calculando a média por linha
 row_means <- hm_data_total %>% 
   select(Symbol, starts_with(c("AA_R","AA_CKD"))) %>% 
-  dplyr::filter(Symbol %in% fn_ORA_gene_diff(AA_CKDxAA_tibble)) %>% 
+  #dplyr::filter(Symbol %in% fn_ORA_gene_diff_topN(AA_CKDxAA_tibble, N = 20)) %>% 
+  dplyr::filter(Symbol %in% paper_proteins) %>% 
   mutate(across(where(is.numeric), \(x) log10(x + 1))) %>% 
   rowwise() %>% 
   mutate(mean_value = mean(c_across(where(is.numeric)), na.rm = TRUE)) %>% 
@@ -164,12 +191,12 @@ row_means <- hm_data_total %>%
 
 # Criando a anotação lateral direita com um ponto por linha
 right_annotation <- rowAnnotation(
-  Média = anno_points(row_means,
+  Average = anno_points(row_means,
                       size = unit(2, "mm"),
                       gp = gpar(col = "black"))
 )
 
-tiff(filename = "Output/pub_plots/AA_CKDxAA_hm.tif",
+tiff(filename = "Output/pub_plots/AA_CKDxAA_hm_n20.tif",
      bg = "white",
      compression = "lzw",
      width = 4000,
@@ -193,7 +220,7 @@ hm3_mat <-
                 \(x) log10(x+1))) %>% 
   mutate(across(where(is.numeric),
                 \(x) (x-mean(x))/sd(x)
-  )
+                )
   ) %>% 
   # pivot_longer(-Symbol,
   #              names_to = "Groups",
@@ -214,7 +241,7 @@ row_means <- hm_data_total %>%
 
 # Criando a anotação lateral direita com um ponto por linha
 right_annotation <- rowAnnotation(
-  Média = anno_points(row_means,
+  Average = anno_points(row_means,
                       size = unit(2, "mm"),
                       gp = gpar(col = "black"))
 )
@@ -274,3 +301,104 @@ walk2(ORA_plot_list, nms_comps,
                          dpi = 600),
       .progress = T)
 
+
+# Venn diagram
+deglist <- list()
+
+
+deglist$AA_CKD_vs_CKD <-
+  fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble)
+
+deglist$AA_CKDxAA <-
+  fn_ORA_gene_diff(AA_CKDxAA_tibble)
+
+deglist$AAxNT <-
+  fn_ORA_gene_diff(AAxNT_tibble)
+
+venn.diagram(deglist,
+             filename = "Output/pub_plots/venn_diffprot.png",
+             imagetype="png" ,
+             height = 1500 , 
+             width = 1500 , 
+             resolution = 600,
+             main = "Differentially expressed proteins",
+             main.cex = 1,
+             compression = "lzw",
+             lwd = 2,
+             col = c("firebrick","forestgreen","royalblue"),
+             #label.col = c(rep("black",3),"firebrick",rep("black",3)),
+             cex = .65,
+             fontface = "bold",
+             fontfamily = "serif",
+             output = F,
+             margin = 0.15,
+             category.names = c("AA CKD vs. CKD",
+                                "AA CKD vs. AA",
+                                "AA vs. NT"),
+             cat.col = c("firebrick","forestgreen","royalblue"),
+             cat.dist = c(0.085,0.085,0.085),
+             cat.cex = .5
+             )
+
+
+oralist <- list()
+
+fn_filter_ORA <- function(x) {
+  x@result %>% 
+    filter(pvalue < 0.05) %>%
+    #mutate(ID = str_split_fixed(ID, "_", 2)[,2]) %>% 
+    #mutate(ID = str_replace_all(ID,"_"," ")) %>% 
+    pull(ID)
+}
+
+oralist$AA_CKD_vs_CKD <-
+  fn_filter_ORA(ora_result_AA_CKD_vs_CKD)
+
+oralist$AA_CKDxAA <-
+  fn_filter_ORA(ora_result_AA_CKDxAA)
+
+oralist$AAxNT <-
+  fn_filter_ORA(ora_result_AAxNT)
+
+
+
+venn.diagram(x = oralist,
+             filename = "Output/pub_plots/venn_oralist.png",
+             imagetype="png" ,
+             height = 1500 , 
+             width = 1500 , 
+             resolution = 600,
+             main = "Enriched terms",
+             main.cex = 1,
+             compression = "lzw",
+             lwd = 2,
+             col = c("firebrick","forestgreen","royalblue"),
+             #label.col = c(rep("black",3),"firebrick",rep("black",3)),
+             cex = .65,
+             fontface = "bold",
+             fontfamily = "serif",
+             output = F,
+             margin = 0.15,
+             euler.d = F,
+             scaled = F,
+             category.names = c("AA CKD vs. CKD",
+                                "AA CKD vs. AA",
+                                "AA vs. NT"),
+             cat.col = c("firebrick","forestgreen","royalblue"),
+             cat.dist = c(0.085,0.085,0.085),
+             cat.cex = .5
+)
+
+# Table diff prot
+
+feature_data %>% 
+  filter(PG.Genes %in% fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble)) %>% 
+  write_csv(file = "Output/pub_plots/AA_CKD_vs_CKD.csv")
+
+feature_data %>% 
+  filter(PG.Genes %in% fn_ORA_gene_diff(AA_CKDxAA_tibble)) %>% 
+  write_csv(file = "Output/pub_plots/AA_CKD_vs_AA.csv")
+
+feature_data %>% 
+  filter(PG.Genes %in% fn_ORA_gene_diff(AAxNT_tibble)) %>% 
+  write_csv(file = "Output/pub_plots/AAxNT.csv")
