@@ -391,14 +391,65 @@ venn.diagram(x = oralist,
 
 # Table diff prot
 
+# feature_data %>% 
+#   filter(PG.Genes %in% fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble)) %>% 
+#   write_csv(file = "Output/pub_plots/AA_CKD_vs_CKD.csv")
+
+# Esta gerando multiplas proteinas por stop!!
+tmp_test <-
+  feature_data %>% 
+  filter(str_detect(PG.Genes,
+                    paste(fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble),
+                          collapse = "|")))
+
 feature_data %>% 
-  filter(PG.Genes %in% fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble)) %>% 
-  write_csv(file = "Output/pub_plots/AA_CKD_vs_CKD.csv")
+  filter(str_detect(PG.Genes,
+                    paste(fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble),
+                          collapse = "|")))  %>% 
+  write_tsv(file = "Output/pub_plots/AA_CKD_vs_CKD_fixed.tsv")
+
+feature_data %>% 
+  filter(str_detect(PG.Genes,
+                    paste(fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble),
+                          collapse = "|")))  %>% 
+  separate_rows(everything(),
+                sep = ";") %>%
+  write_tsv(file = "Output/pub_plots/AA_CKD_vs_CKD_splited.tsv")
+
 
 feature_data %>% 
   filter(PG.Genes %in% fn_ORA_gene_diff(AA_CKDxAA_tibble)) %>% 
   write_csv(file = "Output/pub_plots/AA_CKD_vs_AA.csv")
 
 feature_data %>% 
+  filter(str_detect(PG.Genes,
+                    paste(fn_ORA_gene_diff(AA_CKDxAA_tibble),
+                          collapse = "|"))) %>% 
+  write_tsv(file = "Output/pub_plots/AA_CKD_vs_AA_fixed.tsv")
+
+feature_data %>% 
+  filter(str_detect(PG.Genes,
+                    paste(fn_ORA_gene_diff(AA_CKDxAA_tibble),
+                          collapse = "|"))) %>% 
+  separate_rows(everything(),
+                sep = ";") %>% 
+  write_tsv(file = "Output/pub_plots/AA_CKD_vs_AA_splited.tsv")
+
+feature_data %>% 
   filter(PG.Genes %in% fn_ORA_gene_diff(AAxNT_tibble)) %>% 
   write_csv(file = "Output/pub_plots/AAxNT.csv")
+
+feature_data %>% 
+  # filter(PG.Genes %in% fn_ORA_gene_diff(AAxNT_tibble)) %>% 
+  filter(str_detect(PG.Genes,
+                    paste(fn_ORA_gene_diff(AAxNT_tibble),
+                          collapse = "|"))) %>% 
+  write_tsv(file = "Output/pub_plots/AAxNT_fixed.tsv")
+
+feature_data %>% 
+  filter(str_detect(PG.Genes,
+                    paste(fn_ORA_gene_diff(AAxNT_tibble),
+                          collapse = "|"))) %>% 
+  separate_rows(everything(),
+                sep = ";") %>%
+  write_csv(file = "Output/pub_plots/AAxNT_splited.csv")

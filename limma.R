@@ -1,6 +1,7 @@
 library(limma)
 library(Biobase)
 
+fData(expset)
 
 limma::plotDensities(expset,legend = F)
 boxplot(exprs(expset)[,1:16],

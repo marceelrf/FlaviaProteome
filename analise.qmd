@@ -1,0 +1,490 @@
+---
+title: "Análise de Proteômica - TMT Quantification"
+author: "Marcel Ferreira"
+format: html
+editor: visual
+---
+
+## Setup e Carregamento de Bibliotecas
+
+```{r}
+#| warning:false
+
+library(tidyverse)
+library(readxl)
+library(limma)
+library(Biobase)
+library(qvalue)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(ggrepel)
+library(viridis)
+library(ComplexHeatmap)
+library(VennDiagram)
+library(writexl)
+library(msigdbr)
+
+# Criar diretórios de output se não existirem
+if (!dir.exists("Output2")) dir.create("Output2")
+if (!dir.exists("Output2/pub_plots")) dir.create("Output2/pub_plots")
+```
+
+## Carregamento e Preparação dos Dados
+
+```{r}
+# Carregamento dos dados brutos
+raw_data <- read_xlsx(path = "Data/Protein_TMT_Quant.xlsx")
+pheno_data <- read_xlsx(path = "Data/Sample-Info.xlsx")
+
+# Preparação da matriz de expressão (colunas 17-32)
+exp_mat <- as.data.frame(raw_data[, 17:32])
+rownames(exp_mat) <- raw_data$PG.ProteinAccessions
+
+# Preparação dos dados de características das proteínas
+feature_data <- as.data.frame(raw_data[, 1:16])
+rownames(feature_data) <- raw_data$PG.ProteinAccessions
+
+# Preparação dos dados fenotípicos
+pheno_data <- as.data.frame(pheno_data)
+rownames(pheno_data) <- pheno_data$BioReplicate
+pheno_data <- pheno_data[order(rownames(pheno_data)), ]
+
+# Criação do ExpressionSet
+expset <- ExpressionSet(
+  assayData = as.matrix(exp_mat),
+  phenoData = AnnotatedDataFrame(pheno_data),
+  featureData = AnnotatedDataFrame(feature_data)
+)
+
+print("Dimensões dos dados:")
+print(dim(expset))
+print("Condições experimentais:")
+print(table(pData(expset)$Condition))
+```
+
+## Controle de Qualidade e Normalização
+
+```{r}
+# Plotagem das densidades antes da transformação log2
+par(mfrow = c(2, 2))
+plotDensities(expset, legend = FALSE, main = "Densidades - Dados Brutos")
+
+# Boxplot das intensidades brutas
+boxplot(exprs(expset)[, 1:16], 
+        main = "Boxplot - Intensidades Brutas",
+        las = 2)
+
+# Transformação log2
+expset_log2 <- expset
+exprs(expset_log2) <- log2(exprs(expset)+1)
+
+# Plotagem após transformação log2
+plotDensities(expset_log2, legend = FALSE, main = "Densidades - Log2")
+
+# Boxplot após log2
+boxplot(exprs(expset_log2)[, 1:16],
+        main = "Boxplot - Log2 Intensidades",
+        las = 2)
+
+eset_log_norm <- expset_log2
+exprs(eset_log_norm) <- normalizeBetweenArrays(exprs(expset_log2),
+                                               method = "quantile")
+limma::plotDensities(eset_log_norm,legend = F)
+
+boxplot(exprs(eset_log_norm)[,1:16],
+        main="Boxplot normalized Intensities")
+
+```
+
+## Análise de Expressão Diferencial
+
+```{r}
+# Criação da matriz de design
+design <- model.matrix(~ 0 + factor(pData(eset_log_norm)$Condition))
+colnames(design) <- c("AA", "AA_CKD", "CKD", "nt")
+
+print("Matriz de design:")
+print(design)
+
+# Ajuste do modelo linear
+fit <- lmFit(exprs(eset_log_norm), design)
+
+# Definição dos contrastes
+cm <- makeContrasts(
+  AA_vs_CKD = AA - CKD,
+  AA_vs_nt = AA - nt,
+  CKD_vs_nt = CKD - nt,
+  AA_CKD_vs_AA = AA_CKD - AA,
+  AA_CKD_vs_CKD = AA_CKD - CKD,
+  AA_CKD_vs_nt = AA_CKD - nt,
+  levels = design
+)
+
+comparison_names <- c(
+  "AA_vs_CKD",
+  "AA_vs_nt", 
+  "CKD_vs_nt",
+  "AA_CKD_vs_AA",
+  "AA_CKD_vs_CKD",
+  "AA_CKD_vs_nt"
+)
+
+print("Matriz de contrastes:")
+print(cm)
+
+# Ajuste dos contrastes e estatísticas empíricas
+fit2 <- contrasts.fit(fit, cm)
+fit2 <- eBayes(fit2)
+```
+
+## Extração dos Resultados e Exportação
+
+```{r}
+# **CORREÇÃO**: Loop corrigido para usar o coeficiente correto
+for(i in 1:6){
+  tmp_tab <- topTable(
+    fit2,
+    coef = i,  # CORRIGIDO: usar i em vez de 1
+    adjust.method = "BH",
+    number = Inf
+  )
+  
+  tmp_tab %>% 
+    rownames_to_column("PG.ProteinAccessions") %>% 
+    mutate(Sig = case_when(
+      logFC > 1 & P.Value < 0.05 ~ "Up",
+      logFC < -1 & P.Value < 0.05 ~ "Down",
+      TRUE ~ "NotSig"
+    )) %>% 
+    left_join(feature_data, by = "PG.ProteinAccessions") %>% 
+    mutate(PG.Genes = na_if(PG.Genes, "NaN")) %>% 
+    write_xlsx(path = paste0("Output2/", comparison_names[i], ".xlsx"))
+}
+
+print("Arquivos de resultados exportados para a pasta Output2/")
+```
+
+### Preparação para Enriquecimento
+
+```{r}
+comparison_names <- comparison_names
+
+# Lendo os dados para os tibbles específicos
+AAxNT_tibble <- read_xlsx("Output2/AA_vs_nt.xlsx")
+AA_CKDxAA_tibble <- read_xlsx("Output2/AA_CKD_vs_AA.xlsx")
+AA_CKD_vs_CKD_tibble <- read_xlsx("Output2/AA_CKD_vs_CKD.xlsx")
+```
+
+## Análise de Enriquecimento Funcional
+
+### Baixar assinaturas
+
+```{r}
+msigdbr::msigdbr_collections()
+mmu_c2 <- msigdbr::msigdbr(species = "Mus musculus", category = c("C2"))
+mmu_c5 <- msigdbr::msigdbr(species = "Mus musculus", category = c("C5"))
+mmu_h <- msigdbr::msigdbr(species = "Mus musculus", category = c("H"))
+
+
+termos_interesse <- c("renal",
+                      "Inflammassome",
+                      "Inflamma",
+                      "phosphate",
+                      "phosphorus",
+                      "calcif",
+                      "nefro")
+
+sigs <-
+  mmu_c2 %>% 
+  bind_rows(mmu_c5,mmu_h) %>% 
+  filter(
+    str_detect(tolower(gs_name),
+               regex(str_c(termos_interesse, collapse = "|"),
+                     ignore_case = T)
+               ) |
+      str_detect(tolower(gs_description),
+                 regex(str_c(termos_interesse, collapse = "|"),
+                       ignore_case = T)
+                 )
+  )
+
+msig_data <- sigs %>% dplyr::select(gs_name, gene_symbol)
+```
+
+### Rodar enriquecimento
+
+```{r}
+# Função para extrair genes diferencialmente expressos
+fn_ORA_gene_diff <- function(x, lfc = 1, p_valor = 0.05) {
+  x %>% 
+    #drop_na() %>% 
+    separate_rows(everything(), sep = ";") %>% 
+    # dplyr::mutate(Diff = case_when(
+    #   logFC < -lfc & P.Value < p_valor ~ "Down",
+    #   logFC > lfc & P.Value < p_valor ~ "Up",
+    #   TRUE ~ "Ns"
+    # )) %>%
+    dplyr::filter(Sig != "NotSig") %>% 
+    dplyr::filter(!is.na(PG.Genes)) %>% 
+    pull(PG.Genes)
+}
+
+# Contagem de genes diferencialmente expressos
+print("Genes diferencialmente expressos por contraste:")
+print(paste("AA vs NT:", length(fn_ORA_gene_diff(AAxNT_tibble))))
+
+print(fn_ORA_gene_diff(AAxNT_tibble))
+
+print("-------------------")
+print(fn_ORA_gene_diff(AA_CKDxAA_tibble))
+print(paste("AA CKD vs AA:", length(fn_ORA_gene_diff(AA_CKDxAA_tibble))))
+
+print("-------------------")
+print(paste("AA CKD vs CKD:", length(fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble))))
+print(fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble))
+
+```
+
+```{r}
+# Análise de enriquecimento ORA
+ora_result_AAxNT <- enricher(
+  fn_ORA_gene_diff(AAxNT_tibble),
+  TERM2GENE = msig_data,
+  minGSSize = 1,
+  maxGSSize = 500,
+  pvalueCutoff = 1,
+  qvalueCutoff = 1,
+  pAdjustMethod = "BH"
+)
+
+ora_result_AA_CKDxAA <- enricher(
+  fn_ORA_gene_diff(AA_CKDxAA_tibble),
+  TERM2GENE = msig_data,
+  minGSSize = 1,
+  maxGSSize = 500,
+  pvalueCutoff = 1,
+  qvalueCutoff = 1,
+  pAdjustMethod = "BH"
+)
+
+ora_result_AA_CKD_vs_CKD <- enricher(
+  fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble),
+  TERM2GENE = msig_data,
+  minGSSize = 1,
+  maxGSSize = 500,
+  pvalueCutoff = 1,
+  qvalueCutoff = 1,
+  pAdjustMethod = "BH"
+)
+```
+
+## Visualizações para Publicação
+
+### Função para Volcano Plot
+
+```{r}
+volcanoplot <- function(x, plot_title = "", lfc = 1, p_valor = 0.05) {
+  x_trans <- select(x, logFC, P.Value, Symbol, UNIPROT) %>% 
+    mutate(log_p_valor = -log10(P.Value)) %>% 
+    dplyr::mutate(Diff = case_when(
+      logFC < -lfc & P.Value < p_valor ~ "Down",
+      logFC > lfc & P.Value < p_valor ~ "Up",
+      TRUE ~ "Ns"
+    )) %>% 
+    mutate(Diff = factor(Diff, c("Up", "Ns", "Down")))
+  
+  top20 <- x_trans %>% 
+    filter(Diff != "Ns") %>% 
+    mutate(labs = case_when(
+      is.na(Symbol) ~ UNIPROT,
+      TRUE ~ Symbol
+    )) %>% 
+    slice_max(log_p_valor, n = 20, with_ties = TRUE)
+  
+  x_trans %>% 
+    ggplot(aes(x = logFC, y = log_p_valor, col = Diff)) +
+    geom_point(alpha = .75) +
+    geom_hline(yintercept = -log10(p_valor), linetype = "dashed") +
+    geom_vline(xintercept = c(-lfc, lfc), linetype = "dashed") +
+    geom_label_repel(
+      data = top20,
+      aes(label = labs),
+      show.legend = FALSE,
+      max.overlaps = 20
+    ) +
+    scale_color_manual(values = c(
+      "Up" = "firebrick4",
+      "Ns" = "gray50",
+      "Down" = "dodgerblue"
+    )) +
+    labs(
+      x = "log2FC",
+      y = "-log10(p-value)",
+      col = "",
+      title = plot_title
+    ) +
+    theme_bw() +
+    theme(
+      text = element_text(family = "serif"),
+      plot.title = element_text(size = 22, face = "bold"),
+      axis.title = element_text(size = 18, face = "bold"),
+      axis.text = element_text(size = 12),
+      legend.title = element_text(size = 16, face = "bold")
+    )
+}
+```
+
+### Geração dos Volcano Plots
+
+```{r}
+
+de_tibble <- list(
+  "AA_vs_NT" = AAxNT_tibble,
+  "AA_CKD_vs_AA" = AA_CKDxAA_tibble,
+  "AA_CKD_vs_CKD" = AA_CKD_vs_CKD_tibble
+)
+
+nms_comps <- names(de_tibble)
+
+# Geração dos volcano plots
+volcano_list <- map2(de_tibble, nms_comps, ~volcanoplot(.x, plot_title = .y))
+
+# Exibição dos plots
+walk(volcano_list, print)
+
+# Exportação dos plots
+walk2(volcano_list, nms_comps,
+      .f = \(x, y) ggsave(
+        paste0("Output2/pub_plots/volcano_", y, ".png"),
+        plot = x,
+        width = 12,
+        height = 8,
+        bg = "white",
+        dpi = 600
+      ))
+```
+
+### Heatmaps
+
+```{r}
+# Preparação dos dados para heatmap
+hm_data_total <- raw_data %>% 
+  dplyr::select(Symbol = PG.Genes, ends_with(c("_R1", "_R2", "_R3", "_R4")))
+
+# Função para criar heatmap
+create_heatmap <- function(gene_list, sample_pattern, filename, title = "") {
+  
+  hm_mat <- hm_data_total %>% 
+    dplyr::select(Symbol, matches(sample_pattern)) %>% 
+    dplyr::filter(Symbol %in% gene_list) %>% 
+    mutate(across(where(is.numeric), \(x) log10(x + 1))) %>% 
+    mutate(across(where(is.numeric), \(x) (x - mean(x)) / sd(x))) %>%
+    column_to_rownames("Symbol") %>% 
+    as.matrix()
+  
+  # Calculando a média por linha
+  row_means <- hm_data_total %>% 
+    dplyr::select(Symbol, matches(sample_pattern)) %>% 
+    dplyr::filter(Symbol %in% gene_list) %>% 
+    mutate(across(where(is.numeric), \(x) log10(x + 1))) %>% 
+    rowwise() %>% 
+    mutate(mean_value = mean(c_across(where(is.numeric)), na.rm = TRUE)) %>% 
+    ungroup() %>% 
+    pull(mean_value)
+  
+  # Anotação lateral
+  right_annotation <- rowAnnotation(
+    Average = anno_points(row_means,
+                         size = unit(2, "mm"),
+                         gp = gpar(col = "black"))
+  )
+  
+  # Criação do heatmap
+  tiff(filename = paste0("Output2/pub_plots/", filename),
+       bg = "white",
+       compression = "lzw",
+       width = 4000,
+       height = 4000,
+       res = 600)
+  
+  print(Heatmap(hm_mat,
+                name = "Z-score",
+                border_gp = gpar(lwd = 2),
+                cluster_columns = FALSE,
+                rect_gp = gpar(lwd = 1),
+                right_annotation = right_annotation,
+                column_title = title))
+  
+  dev.off()
+}
+
+# Heatmap 1: AA vs NT
+create_heatmap(
+  gene_list = fn_ORA_gene_diff(AAxNT_tibble),
+  sample_pattern = "AA_R|non",
+  filename = "AAxNT_hm.tif",
+  title = "AA vs NT"
+)
+
+# Heatmap 2: AA CKD vs AA (com proteínas específicas do paper)
+paper_proteins <- c("Chil3", "Lcn2", "Spp1", "Mmp8",
+                   "Orm1", "Orm2", "Ltf", "Apcs",
+                   "Ambp", "Atf6", "Pon3", "Ces2a",
+                   "Ces2e", "Ces3a")
+
+create_heatmap(
+  gene_list = paper_proteins,
+  sample_pattern = "AA_R|AA_CKD",
+  filename = "AA_CKDxAA_hm_paper.tif",
+  title = "AA CKD vs AA - Paper Proteins"
+)
+
+# Heatmap 3: AA CKD vs CKD
+create_heatmap(
+  gene_list = fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble),
+  sample_pattern = "CKD_R|AA_CKD",
+  filename = "AA_CKD_vs_CKD_hm.tif",
+  title = "AA CKD vs CKD"
+)
+
+print("Heatmaps salvos em Output/pub_plots/")
+
+```
+
+### Diagramas de Venn
+
+```{r}
+# Lista de genes diferencialmente expressos
+deglist <- list(
+  "AA CKD vs. CKD" = fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble),
+  "AA CKD vs. AA" = fn_ORA_gene_diff(AA_CKDxAA_tibble),
+  "AA vs. NT" = fn_ORA_gene_diff(AAxNT_tibble)
+)
+
+# Diagrama de Venn para proteínas diferencialmente expressas
+venn.diagram(
+  deglist,
+  filename = "Output2/pub_plots/venn_diffprot.png",
+  imagetype = "png",
+  height = 1500,
+  width = 1500,
+  resolution = 600,
+  main = "Differentially expressed proteins",
+  main.cex = 1,
+  compression = "lzw",
+  lwd = 2,
+  col = c("firebrick", "forestgreen", "royalblue"),
+  cex = .65,
+  fontface = "bold",
+  fontfamily = "serif",
+  output = FALSE,
+  margin = 0.15,
+  cat.col = c("firebrick", "forestgreen", "royalblue"),
+  cat.dist = c(0.085, 0.085, 0.085),
+  cat.cex = .5
+)
+
+print("Diagrama de Venn salvo em Output2/pub_plots/venn_diffprot.png")
+```
+
+## Exportação de Tabelas de Proteínas Diferenciais

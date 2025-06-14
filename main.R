@@ -28,7 +28,7 @@ exp_mat <- raw_data[,17:32]
 rownames(exp_mat) <- raw_data$PG.ProteinAccessions
 
 
-feature_data <- raw_data[,1:16]
+feature_data <- as.data.frame(raw_data[,1:16])
 rownames(feature_data) <- raw_data$PG.ProteinAccessions
 
 pheno_data <- read_xlsx(path = "Data/Sample-Info.xlsx")
