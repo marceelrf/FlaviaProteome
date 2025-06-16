@@ -277,6 +277,14 @@ ora_result_AA_CKD_vs_CKD <- enricher(
 )
 ```
 
+```{r}
+write_xlsx(ora_result_AAxNT@result,"Output2/enrichment/AAxNT.xlsx")
+
+write_xlsx(ora_result_AA_CKDxAA@result,"Output2/enrichment/AA_CKDxAA.xlsx")
+
+write_xlsx(ora_result_AA_CKD_vs_CKD@result,"Output2/enrichment/AA_CKDxCKD.xlsx")
+```
+
 ## Visualizações para Publicação
 
 ### Função para Volcano Plot
@@ -346,7 +354,7 @@ de_tibble <- list(
 nms_comps <- names(de_tibble)
 
 # Geração dos volcano plots
-volcano_list <- map2(de_tibble, nms_comps, ~volcanoplot(.x, plot_title = .y))
+volcano_list <- map2(de_tibble, str_replace_all(nms_comps,pattern = "_",replacement = " "), ~volcanoplot(.x, plot_title = .y))
 
 # Exibição dos plots
 walk(volcano_list, print)
@@ -520,9 +528,9 @@ print("Diagrama de Venn salvo em Output2/pub_plots/venn_diffprot.png")
 ### Barplot
 
 ```{r}
-ora_list <- list("AAxNT" = ora_result_AAxNT,
-                 "AA_CKDxAA" = ora_result_AA_CKDxAA,
-                 "AA_CKD_vs_CKD" = ora_result_AA_CKD_vs_CKD)
+ora_list <- list("AA vs. NT" = ora_result_AAxNT,
+                 "AA CKD vs. AA" = ora_result_AA_CKDxAA,
+                 "AA CKD vs. CKD" = ora_result_AA_CKD_vs_CKD)
 
 fn_barplot <- function(x, plot_title = "") {
   x@result %>%
@@ -540,7 +548,7 @@ fn_barplot <- function(x, plot_title = "") {
 }
 
 
-ORA_plot_list <- map2(ora_list, nms_comps,
+ORA_plot_list <- map2(ora_list, str_replace_all(nms_comps,pattern = "_",replacement = " "),
                       ~fn_barplot(.x,plot_title = .y))
 
 
