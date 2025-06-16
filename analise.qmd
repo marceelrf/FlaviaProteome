@@ -7,8 +7,7 @@ editor: visual
 
 ## Setup e Carregamento de Bibliotecas
 
-```{r}
-#| warning:false
+```{r, message=FALSE,warning=FALSE}
 
 library(tidyverse)
 library(readxl)
@@ -284,7 +283,7 @@ ora_result_AA_CKD_vs_CKD <- enricher(
 
 ```{r}
 volcanoplot <- function(x, plot_title = "", lfc = 1, p_valor = 0.05) {
-  x_trans <- select(x, logFC, P.Value, Symbol, UNIPROT) %>% 
+  x_trans <- dplyr::select(x, logFC, P.Value, Symbol = PG.Genes, UNIPROT = PG.UniprotIds) %>% 
     mutate(log_p_valor = -log10(P.Value)) %>% 
     dplyr::mutate(Diff = case_when(
       logFC < -lfc & P.Value < p_valor ~ "Down",
@@ -294,7 +293,7 @@ volcanoplot <- function(x, plot_title = "", lfc = 1, p_valor = 0.05) {
     mutate(Diff = factor(Diff, c("Up", "Ns", "Down")))
   
   top20 <- x_trans %>% 
-    filter(Diff != "Ns") %>% 
+    dplyr::filter(Diff != "Ns") %>% 
     mutate(labs = case_when(
       is.na(Symbol) ~ UNIPROT,
       TRUE ~ Symbol
@@ -372,17 +371,26 @@ hm_data_total <- raw_data %>%
   dplyr::select(Symbol = PG.Genes, ends_with(c("_R1", "_R2", "_R3", "_R4")))
 
 # Função para criar heatmap
-create_heatmap <- function(gene_list, sample_pattern, filename, title = "") {
+create_heatmap <- function(gene_list, sample_pattern, filename, title = "", col_order = NULL) {
   
-  hm_mat <- hm_data_total %>% 
+  # Seleção e normalização
+  hm_df <- hm_data_total %>% 
     dplyr::select(Symbol, matches(sample_pattern)) %>% 
     dplyr::filter(Symbol %in% gene_list) %>% 
     mutate(across(where(is.numeric), \(x) log10(x + 1))) %>% 
-    mutate(across(where(is.numeric), \(x) (x - mean(x)) / sd(x))) %>%
+    mutate(across(where(is.numeric), \(x) (x - mean(x)) / sd(x)))
+  
+  # Ordenar colunas se 'col_order' for fornecido
+  if (!is.null(col_order)) {
+    hm_df <- hm_df %>% 
+      dplyr::select(Symbol, all_of(col_order))
+  }
+
+  hm_mat <- hm_df %>%
     column_to_rownames("Symbol") %>% 
     as.matrix()
   
-  # Calculando a média por linha
+  # Média por linha
   row_means <- hm_data_total %>% 
     dplyr::select(Symbol, matches(sample_pattern)) %>% 
     dplyr::filter(Symbol %in% gene_list) %>% 
@@ -399,7 +407,7 @@ create_heatmap <- function(gene_list, sample_pattern, filename, title = "") {
                          gp = gpar(col = "black"))
   )
   
-  # Criação do heatmap
+  # Salvar heatmap
   tiff(filename = paste0("Output2/pub_plots/", filename),
        bg = "white",
        compression = "lzw",
@@ -418,10 +426,13 @@ create_heatmap <- function(gene_list, sample_pattern, filename, title = "") {
   dev.off()
 }
 
+
 # Heatmap 1: AA vs NT
 create_heatmap(
   gene_list = fn_ORA_gene_diff(AAxNT_tibble),
   sample_pattern = "AA_R|non",
+  col_order = c("AA_R1", "AA_R2", "AA_R3", "AA_R4", 
+                "non_treat_R1", "non_treat_R2", "non_treat_R3", "non_treat_R4"),
   filename = "AAxNT_hm.tif",
   title = "AA vs NT"
 )
@@ -435,31 +446,50 @@ paper_proteins <- c("Chil3", "Lcn2", "Spp1", "Mmp8",
 create_heatmap(
   gene_list = paper_proteins,
   sample_pattern = "AA_R|AA_CKD",
+  col_order = c("AA_CKD_R1", "AA_CKD_R2", "AA_CKD_R3", "AA_CKD_R4", "AA_R1", "AA_R2", "AA_R3", "AA_R4"),
   filename = "AA_CKDxAA_hm_paper.tif",
-  title = "AA CKD vs AA - Paper Proteins"
+  title = "AA CKD vs AA"
 )
 
 # Heatmap 3: AA CKD vs CKD
 create_heatmap(
   gene_list = fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble),
   sample_pattern = "CKD_R|AA_CKD",
+  col_order = c("AA_CKD_R1", "AA_CKD_R2", "AA_CKD_R3", "AA_CKD_R4", "CKD_R1", "CKD_R2", "CKD_R3", "CKD_R4"),
   filename = "AA_CKD_vs_CKD_hm.tif",
   title = "AA CKD vs CKD"
 )
 
-print("Heatmaps salvos em Output/pub_plots/")
+print("Heatmaps salvos em Output2/pub_plots/")
 
 ```
 
 ### Diagramas de Venn
 
 ```{r}
+fn_venn_prot_diff <- function(x, lfc = 1, p_valor = 0.05) {
+  x %>% 
+    #drop_na() %>% 
+    #separate_rows(everything(), sep = ";") %>% 
+    # dplyr::mutate(Diff = case_when(
+    #   logFC < -lfc & P.Value < p_valor ~ "Down",
+    #   logFC > lfc & P.Value < p_valor ~ "Up",
+    #   TRUE ~ "Ns"
+    # )) %>%
+    dplyr::filter(Sig != "NotSig") %>% 
+    dplyr::filter(!is.na(PG.Genes)) %>% 
+    pull(PG.Genes)
+}
+
+
 # Lista de genes diferencialmente expressos
 deglist <- list(
-  "AA CKD vs. CKD" = fn_ORA_gene_diff(AA_CKD_vs_CKD_tibble),
-  "AA CKD vs. AA" = fn_ORA_gene_diff(AA_CKDxAA_tibble),
-  "AA vs. NT" = fn_ORA_gene_diff(AAxNT_tibble)
+  "AA CKD vs. CKD" = fn_venn_prot_diff(AA_CKD_vs_CKD_tibble),
+  "AA CKD vs. AA" = fn_venn_prot_diff(AA_CKDxAA_tibble),
+  "AA vs. NT" = fn_venn_prot_diff(AAxNT_tibble)
 )
+
+
 
 # Diagrama de Venn para proteínas diferencialmente expressas
 venn.diagram(
@@ -487,4 +517,142 @@ venn.diagram(
 print("Diagrama de Venn salvo em Output2/pub_plots/venn_diffprot.png")
 ```
 
+### Barplot
+
+```{r}
+ora_list <- list("AAxNT" = ora_result_AAxNT,
+                 "AA_CKDxAA" = ora_result_AA_CKDxAA,
+                 "AA_CKD_vs_CKD" = ora_result_AA_CKD_vs_CKD)
+
+fn_barplot <- function(x, plot_title = "") {
+  x@result %>%
+    dplyr::filter(pvalue < 0.05) %>%
+    mutate(ID = str_split_fixed(ID, "_", 2)[,2]) %>% 
+    mutate(ID = str_replace_all(ID,"_"," ")) %>% 
+    arrange(pvalue) %>%  # Ordena primeiro por Count (descendente) e depois por pvalue (ascendente)
+    mutate(ID = factor(ID, levels = rev(unique(ID)))) %>%  # Garante a ordenação
+    ggplot(aes(x = Count, y = ID, fill = -log10(pvalue))) +
+    geom_col(color = "grey50") +
+    scale_fill_viridis(option = "F") +
+    labs(title = plot_title,
+         y = '') +
+    theme_bw()
+}
+
+
+ORA_plot_list <- map2(ora_list, nms_comps,
+                      ~fn_barplot(.x,plot_title = .y))
+
+
+paste0("Output2/pub_plots/barplot_",
+       nms_comps,
+       ".png")
+
+walk2(ORA_plot_list, nms_comps,
+      .f = \(x,y) ggsave(paste0("Output2/pub_plots/barplot_", y,".png"),
+                         plot = x,
+                         width = 12,
+                         height = 8,
+                         bg = "white",
+                         dpi = 600),
+      .progress = T)
+```
+
 ## Exportação de Tabelas de Proteínas Diferenciais
+
+```{r}
+# Função para extrair e salvar proteínas diferencialmente expressas
+export_differential_proteins <- function(tibble_data, comparison_name, 
+                                       lfc_threshold = 1, p_threshold = 0.05,
+                                       output_dir = "Output2/differential_tables/") {
+  
+  # Criar diretório se não existir
+  if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+  
+  # Filtrar proteínas diferencialmente expressas
+  diff_proteins <- tibble_data %>%
+    dplyr::filter(Sig != "NotSig") %>%
+    dplyr::filter(!is.na(PG.Genes)) %>%
+    dplyr::arrange(P.Value) %>%
+    dplyr::select(
+      PG.ProteinAccessions,
+      PG.Genes,
+      PG.ProteinNames,
+      PG.UniprotIds,
+      logFC,
+      P.Value,
+      adj.P.Val,
+      Sig,
+      everything()
+    )
+  
+  # Separar em up e down reguladas
+  up_regulated <- diff_proteins %>%
+    dplyr::filter(Sig == "Up") %>%
+    dplyr::arrange(desc(logFC))
+  
+  down_regulated <- diff_proteins %>%
+    dplyr::filter(Sig == "Down") %>%
+    dplyr::arrange(logFC)
+  
+  # Criar lista para exportar múltiplas abas
+  protein_lists <- list(
+    "All_Differential" = diff_proteins,
+    "Up_Regulated" = up_regulated,
+    "Down_Regulated" = down_regulated
+  )
+  
+  # Salvar arquivo Excel com múltiplas abas
+  filename <- paste0(output_dir, comparison_name, "_differential_proteins.xlsx")
+  write_xlsx(protein_lists, path = filename)
+  
+  # Retornar estatísticas
+  stats <- list(
+    comparison = comparison_name,
+    total_differential = nrow(diff_proteins),
+    up_regulated = nrow(up_regulated),
+    down_regulated = nrow(down_regulated),
+    filename = filename
+  )
+  
+  return(stats)
+}
+
+# Aplicar a função para cada comparação
+comparisons_data <- list(
+  "AA_vs_NT" = AAxNT_tibble,
+  "AA_CKD_vs_AA" = AA_CKDxAA_tibble,
+  "AA_CKD_vs_CKD" = AA_CKD_vs_CKD_tibble
+)
+
+# Exportar todas as tabelas e coletar estatísticas
+export_stats <- map2(comparisons_data, names(comparisons_data), 
+                     ~export_differential_proteins(.x, .y))
+
+# Mostrar estatísticas
+cat("Resumo das Proteínas Diferencialmente Expressas:\n")
+cat(rep("=",50), "\n")
+
+for(stat in export_stats) {
+  cat(sprintf("Comparação: %s\n", stat$comparison))
+  cat(sprintf("  Total diferencial: %d\n", stat$total_differential))
+  cat(sprintf("  Up-reguladas: %d\n", stat$up_regulated))
+  cat(sprintf("  Down-reguladas: %d\n", stat$down_regulated))
+  cat(sprintf("  Arquivo: %s\n", basename(stat$filename)))
+  cat("\n")
+}
+
+# Criar tabela resumo geral
+summary_table <- map_dfr(export_stats, ~data.frame(
+  Comparison = .x$comparison,
+  Total_Differential = .x$total_differential,
+  Up_Regulated = .x$up_regulated,
+  Down_Regulated = .x$down_regulated
+))
+
+# Salvar tabela resumo
+write_xlsx(summary_table, "Output2/differential_tables/summary_differential_proteins.xlsx")
+
+print("Tabelas de proteínas diferenciais exportadas para Output2/differential_tables/")
+print("Tabela resumo salva como: summary_differential_proteins.xlsx")
+```
